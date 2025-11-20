@@ -31,9 +31,9 @@ All metrics are visualized on a custom high-refresh-rate TFT UI and exported to 
 ## 📸 Photos
 
 ```
-/docs/1.jpg
-/docs/2.jpg
-/docs/3.jpg
+/docs/1.jpeg
+/docs/2.jpeg
+/docs/3.jpeg
 ```
 
 ---
