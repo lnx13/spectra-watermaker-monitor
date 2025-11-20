@@ -1,0 +1,683 @@
+esphome:
+  name: ro-monitor
+  friendly_name: ro-monitor
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+  level: INFO
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "changeme"
+
+ota:
+  - platform: esphome
+    password: "changeme"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Ro-Monitor Fallback Hotspot"
+    password: "changeme"
+
+
+# --------------------
+# Time from Home Assistant
+# --------------------
+time:
+  - platform: homeassistant
+    id: ha_time
+
+# --------------------
+# I2C bus (ADS1115)
+# --------------------
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  frequency: 400kHz
+  scan: false
+
+ads1115:
+  - id: ads_main
+    address: 0x48
+
+# --------------------
+# SPI bus for ST7789 TFT
+# --------------------
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+
+# --------------------
+# Outputs: backlight + buzzer
+# --------------------
+output:
+  - platform: ledc
+    pin: GPIO32
+    id: tft_backlight_output
+    frequency: 1000 Hz
+
+  - platform: gpio
+    pin: GPIO26
+    id: buzzer_output
+
+light:
+  - platform: monochromatic
+    id: tft_backlight
+    name: "RO TFT Backlight"
+    output: tft_backlight_output
+    restore_mode: ALWAYS_ON
+
+switch:
+  - platform: output
+    id: buzzer_switch
+    name: "RO TDS Buzzer"
+    output: buzzer_output
+    icon: "mdi:volume-high"
+
+# --------------------
+# Calibration numbers
+# --------------------
+number:
+  # TDS factor (ppm per volt)
+  - platform: template
+    id: tds_cal_factor
+    name: "RO TDS Calibration Factor"
+    restore_value: true
+    optimistic: true
+    initial_value: 500.0
+    min_value: 0.0
+    max_value: 2000.0
+    step: 1.0
+    unit_of_measurement: "ppm/V"
+
+  # TDS alarm threshold
+  - platform: template
+    id: tds_alarm_threshold
+    name: "RO TDS Alarm Threshold"
+    restore_value: true
+    optimistic: true
+    initial_value: 200.0
+    min_value: 0.0
+    max_value: 2000.0
+    step: 1.0
+    unit_of_measurement: "ppm"
+
+  # Pressure before
+  - platform: template
+    id: pressure_before_gain
+    name: "RO Pressure Before Gain"
+    restore_value: true
+    optimistic: true
+    initial_value: 1.0
+    min_value: 0.0
+    max_value: 5.0
+    step: 0.001
+
+  - platform: template
+    id: pressure_before_offset
+    name: "RO Pressure Before Offset"
+    restore_value: true
+    optimistic: true
+    initial_value: 0.0
+    min_value: -50.0
+    max_value: 50.0
+    step: 0.1
+    unit_of_measurement: "psi"
+
+  # Pressure after
+  - platform: template
+    id: pressure_after_gain
+    name: "RO Pressure After Gain"
+    restore_value: true
+    optimistic: true
+    initial_value: 1.0
+    min_value: 0.0
+    max_value: 5.0
+    step: 0.001
+
+  - platform: template
+    id: pressure_after_offset
+    name: "RO Pressure After Offset"
+    restore_value: true
+    optimistic: true
+    initial_value: 0.0
+    min_value: -50.0
+    max_value: 50.0
+    step: 0.1
+    unit_of_measurement: "psi"
+
+  # Flow K (pulses per liter)
+  - platform: template
+    id: flow_calibration_k
+    name: "RO Flow Calibration K"
+    restore_value: true
+    optimistic: true
+    initial_value: 12000.0
+    min_value: 1.0
+    max_value: 50000.0
+    step: 1.0
+    unit_of_measurement: "pulses/L"
+
+# --------------------
+# Globals for piston detector (using pressure AFTER)
+# --------------------
+globals:
+  - id: piston_peak
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+
+  - id: piston_valley
+    type: float
+    restore_value: no
+    initial_value: "99999.0"
+
+  - id: piston_prev_pressure
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+
+  - id: piston_is_peak_a
+    type: bool
+    restore_value: no
+    initial_value: "true"
+
+  - id: piston_amp_a
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+
+  - id: piston_amp_b
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+
+# --------------------
+# Buzzer script for TDS alarm
+# --------------------
+script:
+  - id: tds_alarm_beep
+    mode: restart
+    then:
+      - repeat:
+          count: 3
+          then:
+            - switch.turn_on: buzzer_switch
+            - delay: 300ms
+            - switch.turn_off: buzzer_switch
+            - delay: 300ms
+
+# --------------------
+# SENSORS
+# --------------------
+sensor:
+  # ========== RAW ADS1115 VOLTAGES (HIGH RATE, INTERNAL) ==========
+  - platform: ads1115
+    ads1115_id: ads_main
+    multiplexer: A0_GND
+    gain: 6.144
+    sample_rate: 860
+    id: ads_tds_raw
+    internal: true
+    update_interval: 10ms
+
+  - platform: ads1115
+    ads1115_id: ads_main
+    multiplexer: A1_GND
+    gain: 6.144
+    sample_rate: 860
+    id: ads_pressure_before_raw
+    internal: true
+    update_interval: 10ms
+
+  - platform: ads1115
+    ads1115_id: ads_main
+    multiplexer: A2_GND
+    gain: 6.144
+    sample_rate: 860
+    id: ads_pressure_after_raw
+    internal: true
+    update_interval: 10ms
+
+  # ========== FLOW PULSE METER ==========
+  - platform: pulse_meter
+    pin:
+      number: GPIO25
+      mode:
+        input: true
+        pullup: true
+    name: "RO Flow Pulses Per Minute"
+    id: flow_pulses_per_min
+    unit_of_measurement: "pulses/min"
+    icon: "mdi:pulse"
+    accuracy_decimals: 1
+    internal_filter: 100us
+    timeout: 2s
+
+
+  # Flow in GPH (using calibration K pulses/L)
+  - platform: template
+    id: flow_gph
+    name: "RO Flow"
+    unit_of_measurement: "GPH"
+    icon: "mdi:water-sync"
+    accuracy_decimals: 1
+    update_interval: 500ms
+    lambda: |-
+      if (isnan(id(flow_pulses_per_min).state)) {
+        return NAN;
+      }
+      float k = id(flow_calibration_k).state;
+      if (k <= 0.0f) {
+        return 0.0f;
+      }
+      float pulses_per_min = id(flow_pulses_per_min).state;
+      float liters_per_min = pulses_per_min / k;
+      float liters_per_hour = liters_per_min * 60.0f;
+      float gallons_per_hour = liters_per_hour * 0.264172f;
+      return gallons_per_hour;
+    filters:
+      - sliding_window_moving_average:
+          window_size: 10
+          send_every: 1
+
+  # ========== TDS in ppm ==========
+  - platform: template
+    id: tds_ppm
+    name: "RO TDS"
+    unit_of_measurement: "ppm"
+    icon: "mdi:water-opacity"
+    accuracy_decimals: 0
+    update_interval: 500ms
+    lambda: |-
+      if (isnan(id(ads_tds_raw).state)) {
+        return NAN;
+      }
+      float volts = id(ads_tds_raw).state;
+      float factor = id(tds_cal_factor).state;
+      return volts * factor;
+    filters:
+      - sliding_window_moving_average:
+          window_size: 50
+          send_every: 1
+
+
+  # ========== PRESSURE BEFORE (PSI) ==========
+  - platform: template
+    id: pressure_before_psi
+    internal: True
+    update_interval: 10ms
+    lambda: |-
+      if (isnan(id(ads_pressure_before_raw).state)) {
+        return NAN;
+      }
+      float v = id(ads_pressure_before_raw).state;
+      float p_raw = (v - 0.5f) * (200.0f / (4.5f - 0.5f));
+      float gain = id(pressure_before_gain).state;
+      float offset = id(pressure_before_offset).state;
+      float p = p_raw * gain + offset;
+      if (p < 0.0f) p = 0.0f;
+      return p;
+  
+  - platform: template
+    id: pressure_before_ha
+    name: "RO Pressure Before"
+    unit_of_measurement: "psi"
+    icon: "mdi:gauge"
+    accuracy_decimals: 1
+    device_class: pressure
+    state_class: measurement
+    update_interval: 500ms
+    lambda: |-
+      return id(pressure_before_psi).state;
+
+
+
+  # ========== PRESSURE AFTER (PSI) ==========
+  - platform: template
+    id: pressure_after_psi
+    internal: True
+    update_interval: 10ms
+    lambda: |-
+      if (isnan(id(ads_pressure_after_raw).state)) {
+        return NAN;
+      }
+      float v = id(ads_pressure_after_raw).state;
+      float p_raw = (v - 0.5f) * (200.0f / (4.5f - 0.5f));
+      float gain = id(pressure_after_gain).state;
+      float offset = id(pressure_after_offset).state;
+      float p = p_raw * gain + offset;
+      if (p < 0.0f) p = 0.0f;
+      return p;
+ 
+  - platform: template
+    id: pressure_after_ha
+    name: "RO Pressure After"
+    unit_of_measurement: "psi"
+    icon: "mdi:gauge-low"
+    accuracy_decimals: 1
+    device_class: pressure
+    state_class: measurement
+    update_interval: 500ms
+    lambda: |-
+      return id(pressure_after_psi).state;
+
+
+  # ========== ΔP (PSI) ==========
+  - platform: template
+    id: pressure_delta_psi
+    name: "RO Pressure Delta"
+    unit_of_measurement: "psi"
+    icon: "mdi:delta"
+    device_class: pressure
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 100ms
+    lambda: |-
+      if (isnan(id(pressure_before_psi).state) || isnan(id(pressure_after_psi).state)) {
+        return NAN;
+      }
+      return id(pressure_before_psi).state - id(pressure_after_psi).state;
+    filters:
+      - exponential_moving_average:
+          alpha: 0.3
+          send_every: 1
+      - throttle: 500ms
+
+  # ========== PISTON A/B AMPLITUDES & IMBALANCE ==========
+  - platform: template
+    id: piston_amp_a_sensor
+    name: "RO Piston A Amplitude"
+    unit_of_measurement: "psi"
+    accuracy_decimals: 2
+    update_interval: 1s
+    lambda: |-
+      return id(piston_amp_a);
+
+  - platform: template
+    id: piston_amp_b_sensor
+    name: "RO Piston B Amplitude"
+    unit_of_measurement: "psi"
+    accuracy_decimals: 2
+    update_interval: 1s
+    lambda: |-
+      return id(piston_amp_b);
+
+  - platform: template
+    id: piston_imbalance_sensor
+    name: "RO Piston Imbalance"
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    update_interval: 1s
+    lambda: |-
+      float A = id(piston_amp_a);
+      float B = id(piston_amp_b);
+      if (A <= 0.0f && B <= 0.0f) return 0.0f;
+      float avg = (A + B) / 2.0f;
+      if (avg <= 0.0f) return 0.0f;
+      float d = fabs(A - B) / avg * 100.0f;
+      return d;
+
+# --------------------
+# TDS alarm (binary)
+# --------------------
+binary_sensor:
+  - platform: template
+    id: tds_alarm
+    name: "RO TDS Alarm"
+    device_class: problem
+    lambda: |-
+      if (isnan(id(tds_ppm).state) || isnan(id(tds_alarm_threshold).state)) {
+        return false;
+      }
+      return id(tds_ppm).state > id(tds_alarm_threshold).state;
+    on_press:
+      - script.execute: tds_alarm_beep
+
+# --------------------
+# Piston peak detector using raw Pressure After
+# --------------------
+interval:
+  - interval: 100ms
+    then:
+      - lambda: |-
+          if (isnan(id(ads_pressure_after_raw).state)) {
+            return;
+          }
+          // Convert raw voltage to instantaneous PSI (no filtering)
+          float v = id(ads_pressure_after_raw).state;
+          float p_raw = (v - 0.5f) * (200.0f / (4.5f - 0.5f));
+          if (p_raw < 0.0f) p_raw = 0.0f;
+
+          float prev = id(piston_prev_pressure);
+          id(piston_prev_pressure) = p_raw;
+
+          // Track current peak and valley
+          if (p_raw > id(piston_peak)) {
+            id(piston_peak) = p_raw;
+          }
+          if (p_raw < id(piston_valley)) {
+            id(piston_valley) = p_raw;
+          }
+
+          static uint32_t last_peak_ms = 0;
+          uint32_t now = millis();
+
+          // Sharp drop detection: tune threshold if needed (e.g. -3.0f)
+          float dp = p_raw - prev;
+          bool sharp_drop = (dp < -3.0f);
+          bool long_enough = (now - last_peak_ms) > 2500;  // at least 2.5 s between peaks
+
+          if (sharp_drop && long_enough) {
+            float amp = id(piston_peak) - id(piston_valley);
+            if (amp < 0.0f) amp = 0.0f;
+
+            if (id(piston_is_peak_a)) {
+              id(piston_amp_a) = amp;
+            } else {
+              id(piston_amp_b) = amp;
+            }
+
+            id(piston_is_peak_a) = !id(piston_is_peak_a);
+            last_peak_ms = now;
+
+            // reset window for next cycle
+            id(piston_peak) = p_raw;
+            id(piston_valley) = p_raw;
+          }
+
+# --------------------
+# Fonts
+# --------------------
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 16
+
+  - file: "gfonts://Roboto"
+    id: font_big
+    size: 24
+
+# --------------------
+# Display: ST7789 170x320 landscape
+# --------------------
+display:
+  - platform: st7789v
+    model: CUSTOM
+    cs_pin:
+      number: GPIO15
+      ignore_strapping_warning: true
+    dc_pin:
+      number: GPIO2
+      ignore_strapping_warning: true
+    reset_pin: GPIO4
+    rotation: 270
+    width: 170
+    height: 320
+    offset_width: 0
+    offset_height: 35
+    id: ro_tft
+    update_interval: 100ms
+    lambda: |-
+      it.fill(Color::BLACK);
+      auto w = it.get_width();
+      auto h = it.get_height();
+
+      // Read states
+      float tds  = id(tds_ppm).state;
+      float flow = id(flow_gph).state;
+      float pin  = id(pressure_before_psi).state;
+      float pout = id(pressure_after_psi).state;
+      float pdel = id(pressure_delta_psi).state;
+      float ampA = id(piston_amp_a);
+      float ampB = id(piston_amp_b);
+      float imb  = id(piston_imbalance_sensor).state;
+
+      // Colors
+      Color col_dim     = Color(0x808080);  // grey
+      Color col_text    = Color::WHITE;
+      Color col_tds_ok  = Color(0x00C853);  // green
+      Color col_tds_hi  = Color(0xFF1744);  // red
+      Color col_flow    = Color(0x00B0FF);  // light blue
+      Color col_press   = Color(0xFFD600);  // yellow
+      Color col_dp      = Color(0xFF9100);  // orange
+      Color col_pA      = Color(0x00C853);  // green for A
+      Color col_pB      = Color(0x2962FF);  // blue for B
+      Color col_pImb    = Color(0xFF9100);  // orange for d
+
+      int left_x   = 4;
+      int mid_x    = w / 2 + 10;
+      int third_x  = w - 4;  // right side for imbalance
+
+      // 1) Top row: TDS (left) + time (right)
+      if (id(ha_time).now().is_valid()) {
+        auto now = id(ha_time).now();
+        char time_str[16];
+        snprintf(time_str, sizeof(time_str), "%02d:%02d:%02d",
+                 now.hour, now.minute, now.second);
+        it.printf(w - 4, 4, id(font_small), col_text,
+                  TextAlign::TOP_RIGHT, "%s", time_str);
+      } else {
+        it.printf(w - 4, 4, id(font_small), col_text,
+                  TextAlign::TOP_RIGHT, "--:--:--");
+      }
+
+      {
+        char buf[32];
+        Color c;
+        if (!isnan(tds)) {
+          snprintf(buf, sizeof(buf), "TDS: %.0f ppm", tds);
+          c = id(tds_alarm).state ? col_tds_hi : col_tds_ok;
+        } else {
+          snprintf(buf, sizeof(buf), "TDS: --- ppm");
+          c = col_dim;
+        }
+        it.printf(4, 4, id(font_big), c, TextAlign::TOP_LEFT, "%s", buf);
+      }
+
+      // 2) Second row: Flow (left) + P_out (right)
+      int y2 = 36;
+      {
+        char buf[32];
+        Color c = col_flow;
+        if (!isnan(flow)) {
+          snprintf(buf, sizeof(buf), "Flow: %.1f gph", flow);
+        } else {
+          snprintf(buf, sizeof(buf), "Flow: --- gph");
+          c = col_dim;
+        }
+        it.printf(left_x, y2, id(font_big), c, TextAlign::TOP_LEFT, "%s", buf);
+      }
+      {
+        char buf[32];
+        Color c = col_press;
+        if (!isnan(pout)) {
+          snprintf(buf, sizeof(buf), "P_out: %.0f psi", pout);
+        } else {
+          snprintf(buf, sizeof(buf), "P_out: --- psi");
+          c = col_dim;
+        }
+        it.printf(mid_x, y2, id(font_big), c, TextAlign::TOP_LEFT, "%s", buf);
+      }
+
+      // 3) Third row: P_in (left) + dP (right)
+      int y3 = 68;
+      {
+        char buf[32];
+        Color c = col_press;
+        if (!isnan(pin)) {
+          snprintf(buf, sizeof(buf), "P_in:  %.0f psi", pin);
+        } else {
+          snprintf(buf, sizeof(buf), "P_in:  --- psi");
+          c = col_dim;
+        }
+        it.printf(left_x, y3, id(font_big), c, TextAlign::TOP_LEFT, "%s", buf);
+      }
+      {
+        char buf[32];
+        Color c = col_dp;
+        if (!isnan(pdel)) {
+          snprintf(buf, sizeof(buf), "dP:    %.1f psi", pdel);
+        } else {
+          snprintf(buf, sizeof(buf), "dP:    --- psi");
+          c = col_dim;
+        }
+        it.printf(mid_x, y3, id(font_big), c, TextAlign::TOP_LEFT, "%s", buf);
+      }
+
+      // 4) Pistons status row:  A  B   |   d
+ 
+      int y4 = 104;           // Vertical position for pistons row
+      int col1_x = left_x;    // Left column base X
+      int col2_x = mid_x;   // Right column base X
+
+      // --- Pistons A & B (left column, one row) ---
+      {
+        char buf[64];
+
+        if (!isnan(ampA) && !isnan(ampB)) {
+          // Two values in one line with small spacing
+          snprintf(buf, sizeof(buf), "A: %3.1f  B: %3.1f", ampA, ampB);
+          it.printf(col1_x, y4, id(font_big), col_text,
+                    TextAlign::TOP_LEFT, "%s", buf);
+        } else {
+          snprintf(buf, sizeof(buf), "A: ---   B: ---");
+          it.printf(col1_x, y4, id(font_big), col_dim,
+                    TextAlign::TOP_LEFT, "%s", buf);
+        }
+      }
+
+      // --- Delta "d" in the right column ---
+      {
+        char buf[32];
+
+        if (!isnan(imb)) {
+          snprintf(buf, sizeof(buf), "d: %.1f%%", imb);
+          it.printf(col2_x, y4, id(font_big), col_pImb,
+                    TextAlign::TOP_LEFT, "%s", buf);
+        } else {
+          snprintf(buf, sizeof(buf), "d: ---");
+          it.printf(col2_x, y4, id(font_big), col_dim,
+                    TextAlign::TOP_LEFT, "%s", buf);
+        }
+      }
+
+      // 5) Bottom alarm banner if TDS high
+      if (id(tds_alarm).state) {
+        int banner_h = 24;
+        int banner_y = h - banner_h;
+        it.filled_rectangle(0, banner_y, w, banner_h, col_tds_hi);
+        it.printf(w / 2, banner_y + 2, id(font_big), Color::BLACK,
+                  TextAlign::TOP_CENTER, "!!! HIGH TDS !!!");
+      }
