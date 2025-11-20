@@ -5,7 +5,7 @@
 ![Issues](https://img.shields.io/github/issues/lnx13/spectra-watermaker-monitor?color=orange&style=flat)
 ![Last Commit](https://img.shields.io/github/last-commit/lnx13/spectra-watermaker-monitor?color=blue&style=flat)
 ![ESPHome](https://img.shields.io/badge/ESPHome-100%25-blue?style=flat)
-
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
 ---
 
 ## 📘 Overview
