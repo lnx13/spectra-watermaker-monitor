@@ -152,6 +152,7 @@ If this project helped you, consider supporting development:
 ---
 
 ## 🙌 Credits
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
 
 Built by **lnx13**  
 Enhanced with ❤️ using ESPHome.  
