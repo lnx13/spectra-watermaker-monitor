@@ -10,8 +10,9 @@
 
 ## 📘 Overview
 
-This project provides a **real‑time monitoring system for the Spectra Ventura Watermaker**, powered by an **ESP32 + ADS1115 + ST7789 display**.  
-It visualizes watermaker performance, detects clarks pump cycles, monitors pressures, TDS, flow, and exports clean data to Home Assistant.
+This project provides a real-time monitoring system for the Spectra Ventura Watermaker, powered by an ESP32 + ADS1115 + ST7789 display.
+It tracks TDS, flow rate, pump piston cycles, and pressur before and after filters — including filter differential pressure (dP), which indicates when your pre-filters are getting clogged.
+All metrics are visualized on a custom high-refresh-rate TFT UI and exported to Home Assistant via dedicated throttled sensors.
 
 ---
 
@@ -107,6 +108,7 @@ It visualizes watermaker performance, detects clarks pump cycles, monitors press
 - ⚡ **High‑frequency RAW sampling** (10 ms interval)
 - 🎚 **16‑bit ADC (ADS1115)** for stable pressure values
 - 💧 **Flow sensor** with proper debouncing
+- 🧽 **Filter clog detection** Measures the pressure before and after the filter using two transducers and computes **ΔP**, clearly showing filter loading and when it’s time to replace cartridges.
 - 🔍 **Piston cycle analyzer:**
   - Detects piston A & B strokes  
   - Measures stroke amplitudes  
