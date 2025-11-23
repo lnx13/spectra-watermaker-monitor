@@ -270,8 +270,10 @@ sensor:
   - platform: template
     id: flow_gph
     name: "RO Flow"
-    unit_of_measurement: "GPH"
+    unit_of_measurement: "gal/h"
     icon: "mdi:water-sync"
+    device_class: volume_flow_rate
+    state_class: measurement
     accuracy_decimals: 1
     update_interval: 500ms
     lambda: |-
@@ -400,6 +402,8 @@ sensor:
     id: piston_amp_a_sensor
     name: "RO Piston A Amplitude"
     unit_of_measurement: "psi"
+    device_class: pressure
+    state_class: measurement
     accuracy_decimals: 2
     update_interval: 1s
     lambda: |-
@@ -409,6 +413,8 @@ sensor:
     id: piston_amp_b_sensor
     name: "RO Piston B Amplitude"
     unit_of_measurement: "psi"
+    device_class: pressure
+    state_class: measurement
     accuracy_decimals: 2
     update_interval: 1s
     lambda: |-
@@ -417,6 +423,8 @@ sensor:
   - platform: template
     id: piston_imbalance_sensor
     name: "RO Piston Imbalance"
+    state_class: measurement
+    icon: "mdi:delta"
     unit_of_measurement: "%"
     accuracy_decimals: 1
     update_interval: 1s
@@ -681,3 +689,4 @@ display:
         it.printf(w / 2, banner_y + 2, id(font_big), Color::BLACK,
                   TextAlign::TOP_CENTER, "!!! HIGH TDS !!!");
       }
+

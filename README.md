@@ -46,6 +46,7 @@ All metrics are visualized on a custom high-refresh-rate TFT UI and exported to 
 | **ADS1115 (0x48)** | 4‑channel 16‑bit ADC |
 | **Hall Flow Sensor (1/4")** | Pulse output, via voltage divider |
 | **Pressure Transducers (0–200 PSI, 0.5–4.5V)** | Before & after filter pressures |
+| **CQRobot TDS Meter Sensor** | TDS measurement, compatible with a 1/4” quick-connect fitting |
 | **Active Buzzer (5V)** | Alarm output via transistor |
 | **Misc Wiring / Resistors** | Installation‑dependent |
 
