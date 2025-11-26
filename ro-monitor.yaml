@@ -8,8 +8,8 @@ esp32:
     type: esp-idf
     sdkconfig_options:
       CONFIG_BT_ENABLED: "n"
-      CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ: "160"
-      CONFIG_ESP32_DEFAULT_CPU_FREQ_160: "y"
+      #CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ: "160"
+      #CONFIG_ESP32_DEFAULT_CPU_FREQ_160: "y"
 
 # Enable logging
 logger:
@@ -27,7 +27,7 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  power_save_mode: HIGH
+  power_save_mode: LIGHT
   output_power: 10dBm
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
@@ -81,7 +81,7 @@ light:
     id: tft_backlight
     name: "RO TFT Backlight"
     output: tft_backlight_output
-    restore_mode: ALWAYS_ON
+    restore_mode: RESTORE_AND_ON
     
 
 switch:
